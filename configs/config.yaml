@@ -1,0 +1,29 @@
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+
+path: data # dataset root dir
+
+train: train # train images (relative to 'path')
+
+val: test # val images (relative to 'path')
+
+test: test # test images (optional)
+
+# Classes
+nc: 13 # number of classes
+
+names:
+  [
+    "потертость",
+    "черная точка",
+    "плена",
+    "маркер",
+    "грязь",
+    "накол",
+    "н.д. накол",
+    "микровыступ",
+    "н.д. микровыступ",
+    "вмятина",
+    "мех.повреждение",
+    "риска",
+    "царапина с волчком",
+  ]

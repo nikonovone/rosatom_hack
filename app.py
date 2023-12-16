@@ -202,7 +202,7 @@ def main():
             col_orig, col_sobel = st.columns(2)
             col_autoenoder, col_yolo = st.columns(2)
 
-    model = YOLO("epoch180.pt")
+    model = YOLO("./weigths/model.pt")
 
     if uploaded_image is not None:
         image_orig = read_image(uploaded_image)

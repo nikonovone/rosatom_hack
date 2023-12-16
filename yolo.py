@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-model = YOLO("yolov8n.pt")
+model = YOLO("./weights/yolov8n.pt")
 
 augs = {
     #'hsv_h': 0.015  , #image HSV-Hue augmentation (fraction)
@@ -19,6 +19,6 @@ augs = {
 }
 
 model.train(
-    data="config.yaml", epochs=400, save_period=10, batch=32, **augs
+    data="./configs/config.yaml", epochs=400, save_period=10, batch=32, **augs
 )  # train the model
 metrics = model.val()  # evaluate model performance on the validation set
