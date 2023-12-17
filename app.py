@@ -7,8 +7,22 @@ import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 
+import numpy as np
+import torch
+from model import load_model, FeatureExtractor
+import config as c
+from utils import *
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
+import os
+from torchvision import transforms
+import matplotlib.pyplot as plt
+
+
 SIZE_FRAME = 160
 NMS_THRESHOLD = 0.5
+device = "cuda"
+model_autoenc = load_model("detection_model")
 
 
 def read_image(uploaded_image):
@@ -18,6 +32,81 @@ def read_image(uploaded_image):
     image = np.array(image)
     # image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     return image
+
+
+def read_image_autoencoder(uploaded_image):
+    image = Image.open(uploaded_image)
+    image = image.convert("RGB")
+    return image
+
+
+def preprocess(inputs):
+    """move data to device and reshape image"""
+    tfs = [
+        transforms.Resize(c.img_size),
+        transforms.ToTensor(),
+        transforms.Normalize(c.norm_mean, c.norm_std),
+    ]
+    transform = transforms.Compose(tfs)
+    inputs = transform(inputs)
+    inputs = inputs.view(-1, *inputs.shape[-3:])
+    inputs = inputs.to(c.device)
+    return inputs
+
+
+def viz_maps(maps, image):
+    image = np.array(image)
+
+    map_to_viz = t2np(
+        F.interpolate(
+            maps[0][None, None],
+            size=image.shape[:2],
+            mode="bilinear",
+            align_corners=False,
+        )
+    )[0, 0]
+    print(map_to_viz.shape)
+
+    cm = plt.get_cmap("gist_rainbow")
+    map_to_viz = map_to_viz / map_to_viz.max()
+    colored_image = cm(map_to_viz)
+    map_to_viz = 0.7 * image/255 + 0.3 * colored_image[:, :, :3]
+    return map_to_viz
+
+
+def predict_autoencoder(image):
+    image = read_image_autoencoder(image)
+    device = "cuda"
+
+    model_autoenc.to(device)
+    model_autoenc.eval()
+    fe = FeatureExtractor()
+    fe.eval()
+    fe.to(c.device)
+    for param in fe.parameters():
+        param.requires_grad = False
+
+    print("\nCompute maps, loss and scores on test set:")
+    anomaly_score = list()
+    c.viz_sample_count = 0
+    all_maps = list()
+    with torch.no_grad():
+        inputs_preproc = preprocess(image)
+        inputs = fe(inputs_preproc)
+        z = model_autoenc(inputs)
+
+        z_concat = t2np(concat_maps(z))
+        nll_score = np.mean(z_concat**2 / 2, axis=(1, 2))
+        anomaly_score.append(nll_score)
+
+        z_grouped = list()
+        likelihood_grouped = list()
+        for i in range(len(z)):
+            z_grouped.append(z[i].view(-1, *z[i].shape[1:]))
+            likelihood_grouped.append(torch.mean(z_grouped[-1] ** 2, dim=(1,)))
+        all_maps.extend(likelihood_grouped[0])
+        img = viz_maps([lg[0] for lg in likelihood_grouped], image)
+    return img
 
 
 def autoAdjustments(img):
@@ -202,10 +291,11 @@ def main():
             col_orig, col_sobel = st.columns(2)
             col_autoenoder, col_yolo = st.columns(2)
 
-    model = YOLO("./weigths/model.pt")
+    model = YOLO(os.path.abspath("./weights/model.pt"))
 
     if uploaded_image is not None:
         image_orig = read_image(uploaded_image)
+        autoencoder_image = predict_autoencoder(uploaded_image)
         sobel_image = get_sobel(image_orig)
         sobel_image = autoAdjustments(sobel_image)
         image = np.stack([image_orig, sobel_image, np.zeros_like(image_orig)], axis=2)
@@ -213,9 +303,8 @@ def main():
         boxes, labels, confs = predict(image, model)
         boxes, labels = nms(boxes, confs, labels, threshold=NMS_THRESHOLD)
 
-        autoencoder_image = np.zeros_like(sobel_image)
         yolo_image = draw_annotations(
-            image,
+            image_orig,
             boxes,
             labels,
             SIZE_FRAME,
